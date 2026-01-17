@@ -1,16 +1,16 @@
-# src/llm_analyzer.py
+# src/llm_analysis.py - ENHANCED VERSION
 """
-LLM-based circuit analysis using OpenAI or Gemini APIs.
-Provides structured analysis and function recommendations.
+LLM-based circuit analysis with improved component detection
 """
 from __future__ import annotations
 import json
 import os
-from typing import Dict, Any, Optional, Literal
+from typing import Dict, Any, Optional
 from enum import Enum
 from dotenv import load_dotenv
 
 load_dotenv()
+
 
 class LLMProvider(Enum):
     OPENAI = "openai"
@@ -28,11 +28,7 @@ class LLMAnalyzer:
         self.used_provider = None
         
     def analyze_schematic(self, summary: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Analyze schematic using LLM with automatic fallback.
-        Returns structured analysis or None if all methods fail.
-        """
-        # Try primary LLM
+        """Analyze schematic using LLM with automatic fallback"""
         if self.primary != LLMProvider.HEURISTIC:
             try:
                 result = self._call_llm(self.primary, summary)
@@ -42,7 +38,6 @@ class LLMAnalyzer:
             except Exception as e:
                 print(f"Primary LLM ({self.primary.value}) failed: {e}")
         
-        # Try secondary LLM
         if self.secondary != LLMProvider.HEURISTIC:
             try:
                 result = self._call_llm(self.secondary, summary)
@@ -52,10 +47,9 @@ class LLMAnalyzer:
             except Exception as e:
                 print(f"Secondary LLM ({self.secondary.value}) failed: {e}")
         
-        # Fallback to heuristics
         print("Falling back to heuristic analysis")
         self.used_provider = LLMProvider.HEURISTIC
-        return None  # Caller will use heuristics
+        return None
     
     def _call_llm(self, provider: LLMProvider, summary: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Call specific LLM provider"""
@@ -67,10 +61,7 @@ class LLMAnalyzer:
 
 
 def call_openai_api(schematic_summary: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Call OpenAI API to analyze schematic and recommend analysis functions.
-    Requires OPENAI_API_KEY environment variable.
-    """
+    """Call OpenAI API with enhanced prompting"""
     try:
         import openai
     except ImportError:
@@ -85,18 +76,12 @@ def call_openai_api(schematic_summary: Dict[str, Any]) -> Dict[str, Any]:
     prompt = _build_analysis_prompt(schematic_summary)
     
     response = client.chat.completions.create(
-        model="gpt-4o",  # Use latest model
+        model="gpt-4o",
         messages=[
-            {
-                "role": "system",
-                "content": _get_system_prompt()
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
+            {"role": "system", "content": _get_system_prompt()},
+            {"role": "user", "content": prompt}
         ],
-        temperature=0.1,  # Low temperature for consistent technical analysis
+        temperature=0.1,
         response_format={"type": "json_object"}
     )
     
@@ -105,14 +90,11 @@ def call_openai_api(schematic_summary: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def call_gemini_api(schematic_summary: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Call Google Gemini API to analyze schematic.
-    Requires GEMINI_API_KEY environment variable.
-    """
+    """Call Google Gemini API"""
     try:
         import google.generativeai as genai
     except ImportError:
-        raise ImportError("Google Generative AI library not installed. Run: pip install google-generativeai")
+        raise ImportError("Google Generative AI library not installed")
     
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -124,16 +106,9 @@ def call_gemini_api(schematic_summary: Dict[str, Any]) -> Dict[str, Any]:
     prompt = _build_analysis_prompt(schematic_summary)
     full_prompt = f"{_get_system_prompt()}\n\n{prompt}\n\nRespond with valid JSON only."
     
-    response = model.generate_content(
-        full_prompt,
-        generation_config=genai.types.GenerationConfig(
-            temperature=0.1,
-        )
-    )
+    response = model.generate_content(full_prompt, generation_config=genai.types.GenerationConfig(temperature=0.1))
     
-    # Extract JSON from response
     text = response.text.strip()
-    # Remove markdown code blocks if present
     if text.startswith("```json"):
         text = text[7:]
     if text.startswith("```"):
@@ -146,77 +121,107 @@ def call_gemini_api(schematic_summary: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _get_system_prompt() -> str:
-    """System prompt defining the LLM's role and output format"""
-    return """You are an expert PCB design debugger analyzing KiCad schematics. Your job is to:
+    """Enhanced system prompt with strict instructions"""
+    return """You are an expert PCB design debugger. Analyze KiCad schematics and provide detailed debugging guidance.
 
-1. Identify the circuit type and purpose
-2. Detect connectivity and design issues
-3. Recommend specific analysis functions to run
-4. Provide debugging verification steps
+CRITICAL RULES:
+1. ALWAYS use actual component references from the schematic (e.g., "U1", "Y1", "R1") - NEVER use "None"
+2. ALWAYS use exact function names from the available functions list
+3. Focus on real hardware issues that prevent circuit operation
 
-You must respond with valid JSON matching this EXACT structure:
-
+OUTPUT STRUCTURE (strict JSON):
 {
   "circuit_analysis": {
-    "circuit_type": "string (e.g., '555_timer_astable', 'stm32_basic', 'esp32_wifi')",
-    "purpose": "string (brief description of what circuit does)",
+    "circuit_type": "stm32_basic|555_timer_astable|esp32_wifi|etc",
+    "purpose": "brief description",
     "confidence": 0.0-1.0,
-    "main_ic": "string (reference like 'U1')",
-    "critical_components": ["R1", "C2", "U1"]
+    "main_ic": "U1",  // ACTUAL component reference, NOT "None"
+    "critical_components": ["U1", "Y1", "C1"]  // ACTUAL refs
   },
   "analysis": [
     {
-      "function": "function_name",
-      "params": {"key": "value"},
+      "function": "verify_power_connectivity",  // EXACT function name
+      "params": {
+        "power_nets": ["3V3", "GND"],
+        "ic_ref": "U1",  // ACTUAL component ref
+        "power_pins": ["1", "32", "48", "64"],  // Real pin numbers
+        "gnd_pins": ["16", "33", "47", "63"]
+      },
       "priority": "critical|high|medium|low",
-      "reason": "why this analysis is needed"
+      "reason": "explanation"
     }
   ],
   "expected_behavior": {
-    "output_frequency_hz": 5.5,
-    "duty_cycle_percent": 61.5,
-    "other_behaviors": "any other expected circuit behavior for debugging"
+    "output_frequency_hz": 8000000,
+    "duty_cycle_percent": 50,
+    "other_behaviors": "description"
   },
   "detected_issues": [
     {
-      "issue": "brief_issue_name",
+      "issue": "missing_reset_pullup",
       "severity": "critical|high|medium|low",
-      "analysis_needed": ["function1", "function2"],
-      "components_involved": ["U1", "R1"],
-      "reason": "why this is an issue",
-      "debug_step": "short explanation of how to fix"
+      "analysis_needed": ["analyze_reset_circuit"],
+      "components_involved": ["U1", "R5"],  // ACTUAL refs
+      "reason": "why this is a problem",
+      "debug_step": "how to fix"
     }
   ],
   "verification_steps_issues": [
-    {"step": 1, "action": "what to do", "expected": "what should happen", "target": "specific issue"},
-    {"step": 2, "action": "...", "expected": "...", "target": "..."}
+    {"step": 1, "action": "...", "expected": "...", "target": "issue_id"}
   ],
   "verification_steps_general": [
-    {"step": 1, "action": "general workability check", "expected": "expected result"},
-    {"step": 2, "action": "...", "expected": "..."}
+    {"step": 1, "action": "...", "expected": "..."}
   ]
 }
 
-Be specific and technical. Focus on actual debugging steps a beginner would take."""
+AVAILABLE FUNCTIONS (use exact names):
+- verify_power_connectivity
+- check_power_rail_routing
+- analyze_decoupling_capacitors (NOT "check_decoupling_caps")
+- verify_voltage_regulator_circuit
+- analyze_rc_timing_network
+- verify_crystal_circuit
+- check_clock_distribution
+- check_floating_pins
+- verify_pull_up_pull_down
+- trace_signal_path
+- verify_ground_plane
+- verify_mcu_boot_configuration (NOT "check_mcu_boot_pins")
+- check_debug_interface
+- analyze_reset_circuit
+- verify_programming_interface
+- check_mcu_power_pins
+
+COMMON MCU ISSUES TO DETECT:
+1. Missing reset pull-up resistor (CRITICAL)
+2. Floating BOOT pins (WARNING)
+3. Missing crystal load capacitors (HIGH)
+4. Missing decoupling capacitors (MEDIUM)
+5. Unconnected power pins (CRITICAL)"""
 
 
 def _build_analysis_prompt(summary: Dict[str, Any]) -> str:
-    """Build the user prompt with schematic data"""
+    """Build enhanced analysis prompt with component list"""
     
-    # Highlight critical information
+    # Extract component references for LLM
+    component_refs = [c['ref'] for c in summary['components']]
+    mcu_components = [c for c in summary['components'] if c['type'] == 'microcontroller']
+    crystal_components = [c for c in summary['components'] if c['type'] == 'crystal_oscillator']
+    
     components_str = json.dumps(summary['components'], indent=2)
-    nets_str = json.dumps(summary['nets'][:20], indent=2)  # Limit to first 20 nets
+    nets_str = json.dumps(summary['nets'][:20], indent=2)
     labels_str = json.dumps(summary['labels'], indent=2)
     issues_str = json.dumps(summary['connectivity_issues'], indent=2)
     stats_str = json.dumps(summary['statistics'], indent=2)
     
-    prompt = f"""Analyze this KiCad schematic and identify:
-1. What type of circuit this is
-2. Any connectivity or design issues
-3. Which analysis functions should be executed
-4. Debugging steps for a beginner
+    prompt = f"""Analyze this KiCad schematic for PCB debugging.
 
-SCHEMATIC SUMMARY:
+CRITICAL: Use ACTUAL component references from this list:
+Component References: {component_refs}
+MCU: {[c['ref'] for c in mcu_components]}
+Crystals: {[c['ref'] for c in crystal_components]}
+
+SCHEMATIC DATA:
 
 STATISTICS:
 {stats_str}
@@ -227,64 +232,46 @@ COMPONENTS:
 NETS (first 20):
 {nets_str}
 
-LABELS (with connectivity status):
+LABELS:
 {labels_str}
 
-DETECTED CONNECTIVITY ISSUES:
+CONNECTIVITY ISSUES:
 {issues_str}
 
-Based on this data:
-1. Identify the circuit type and main IC
-2. Detect any power, ground, or signal connectivity issues
-3. Recommend specific analysis functions (use names like: verify_power_connectivity, analyze_rc_timing, check_decoupling_caps, verify_crystal_circuit, check_mcu_boot_pins, etc.)
-4. Provide beginner-friendly debugging steps
+REQUIRED ANALYSIS:
+1. Identify circuit type and main IC (use actual component ref like "U1", NOT "None")
+2. Detect CRITICAL issues:
+   - Missing reset pull-up resistor on MCU NRST pin
+   - Floating BOOT pins
+   - Missing crystal load capacitors
+   - Unconnected power pins
+3. Recommend analysis functions (use EXACT function names from list)
+4. Provide step-by-step debugging
 
-Focus on issues that would prevent the PCB from working on first power-up."""
+Focus on issues that prevent first power-up."""
     
     return prompt
 
 
-# Available analysis functions that LLM can recommend
 AVAILABLE_ANALYSIS_FUNCTIONS = [
-    # Power analysis
     "verify_power_connectivity",
     "check_power_rail_routing",
     "analyze_decoupling_capacitors",
     "verify_voltage_regulator_circuit",
     "check_power_sequencing",
-    
-    # Timing/Clock analysis
     "analyze_rc_timing_network",
     "verify_crystal_circuit",
     "check_clock_distribution",
-    "analyze_pll_configuration",
-    
-    # Signal integrity
     "check_floating_pins",
     "verify_pull_up_pull_down",
     "analyze_signal_termination",
-    "check_impedance_matching",
-    
-    # MCU specific
     "verify_mcu_boot_configuration",
     "check_debug_interface",
     "analyze_reset_circuit",
     "verify_programming_interface",
-    
-    # Component verification
-    "verify_component_values",
-    "check_component_ratings",
-    "analyze_thermal_design",
-    
-    # Connectivity
+    "check_mcu_power_pins",
     "trace_signal_path",
     "verify_ground_plane",
     "check_differential_pairs",
     "analyze_power_distribution",
-    
-    # Circuit-specific
-    "analyze_555_timer_circuit",
-    "verify_opamp_circuit",
-    "check_motor_driver_circuit",
-    "analyze_switching_converter"
 ]
