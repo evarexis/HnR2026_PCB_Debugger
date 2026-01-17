@@ -1,3 +1,4 @@
+#src/report.py
 from __future__ import annotations
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
@@ -17,3 +18,4 @@ class ReportModel(BaseModel):
     checklist: List[StepModel]
     overall_risk: Dict[str, Any]
     notes: List[str] = Field(default_factory=list)
+    findings: List[Dict[str, Any]] = Field(default_factory=list)

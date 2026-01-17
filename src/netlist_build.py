@@ -1,12 +1,21 @@
+#src/netlist_build.py
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple, Optional
 from src.kicad_extract import Schematic, Point
+
 
 @dataclass
 class Net:
     name: str
     nodes: Set[Point]
+
+@dataclass
+class NetBuildResult:
+    nets: List[Net]
+    label_attached: Dict[Tuple[int,int], str]    # label position -> net name
+    label_unattached: List[Tuple[str, Tuple[int,int]]]  # (text, pos)
+
 
 def _neighbors_from_wires(wires) -> Dict[Point, Set[Point]]:
     g: Dict[Point, Set[Point]] = {}
@@ -29,12 +38,15 @@ def _nearest_node(point: Point, nodes: Set[Point], tol: int = 0) -> Point | None
             return (nx, ny)
     return None
 
-def build_nets(sch: Schematic, label_tolerance: int = 0) -> List[Net]:
+def build_nets(sch: Schematic, label_tolerance: int = 0) -> NetBuildResult:
     graph = _neighbors_from_wires(sch.wires)
     all_nodes = set(graph.keys())
 
     # Assign label->node mapping
     node_to_name: Dict[Point, str] = {}
+    label_attached: Dict[Tuple[int, int], str] = {}
+    label_unattached: List[Tuple[str, Tuple[int, int]]] = []
+
     for lab in sch.labels:
         if not lab.at:
             continue
@@ -44,6 +56,10 @@ def build_nets(sch: Schematic, label_tolerance: int = 0) -> List[Net]:
             existing = node_to_name.get(n)
             if existing is None or lab.kind == "global_label":
                 node_to_name[n] = lab.text
+            label_attached[lab.at] = lab.text
+        else:
+            label_unattached.append((lab.text, lab.at))
+    
 
     # Flood fill connected components
     visited: Set[Point] = set()
@@ -78,4 +94,4 @@ def build_nets(sch: Schematic, label_tolerance: int = 0) -> List[Net]:
 
         nets.append(Net(name=name, nodes=comp))
 
-    return nets
+    return NetBuildResult(nets=nets, label_attached=label_attached, label_unattached=label_unattached)
