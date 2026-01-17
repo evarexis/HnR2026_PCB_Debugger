@@ -10,8 +10,8 @@ long_description = readme_file.read_text(encoding='utf-8') if readme_file.exists
 setup(
     name="pcb-bringup-assistant",
     version="1.0.0",
-    author="Your Name",
-    author_email="your.email@example.com",
+    author="YName",  
+    author_email="cxiy06@gmail.com, avecado5649@gmail.com", 
     description="Automated PCB bring-up checklist generation from KiCad schematics",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -33,10 +33,13 @@ setup(
         "sexpdata>=0.0.3",
         "pydantic>=2.0.0",
         "wxPython>=4.2.0",
+        "openai>=2.0.0", 
+        "google-generativeai>=0.8.0",  
+        "python-dotenv>=1.0.0",  
     ],
     entry_points={
         'console_scripts': [
-            'pcb-bringup=run_bringup_assistant:main',
+            'pcb-bringup=bringup_plugin:main', 
         ],
     },
     include_package_data=True,

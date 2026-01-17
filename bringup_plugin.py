@@ -14,10 +14,10 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 # ==========================================================
-# Import our analysis backend
+# Import our analysis backend via BRIDGE
 # ==========================================================
 try:
-    from main import run
+    from bridge import run 
     from src.export import export_checklist_markdown, export_checklist_json
     BACKEND_AVAILABLE = True
 except ImportError as e:
@@ -26,6 +26,7 @@ except ImportError as e:
     print(f"ERROR: Could not import analysis backend: {e}")
     print("\nMake sure you have installed all dependencies:")
     print("  pip install sexpdata pydantic wxPython")
+    print("\nAnd that bridge.py exists in the same directory")
 
 
 # ==========================================================
@@ -84,10 +85,10 @@ class BringUpAssistantDialog(wx.Dialog):
 
         # Notebook with tabs
         notebook = wx.Notebook(self)
-        notebook.AddPage(self._create_summary_tab(notebook), "📊 Detection Summary")
-        notebook.AddPage(self._create_findings_tab(notebook), "⚠️ Issues & Warnings")
-        notebook.AddPage(self._create_checklist_tab(notebook), "✅ Bring-Up Checklist")
-        notebook.AddPage(self._create_tools_tab(notebook), "🔧 Debug Tools")
+        notebook.AddPage(self._create_summary_tab(notebook), "Detection Summary")
+        notebook.AddPage(self._create_findings_tab(notebook), "Issues & Warnings")
+        notebook.AddPage(self._create_checklist_tab(notebook), "Bring-Up Checklist")
+        notebook.AddPage(self._create_tools_tab(notebook), "Debug Tools")
         
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
 
@@ -177,7 +178,7 @@ class BringUpAssistantDialog(wx.Dialog):
         if not findings:
             no_issues = wx.StaticText(
                 panel,
-                label="✓ No critical issues detected!\n\n"
+                label="No critical issues detected!\n\n"
                       "The schematic passed automated checks.\n"
                       "Proceed with the bring-up checklist."
             )
@@ -233,7 +234,7 @@ class BringUpAssistantDialog(wx.Dialog):
             sizer.Add(fix_text, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
         
         if finding.get('prevents_bringup'):
-            blocker = wx.StaticText(panel, label="⛔ BLOCKS BRING-UP")
+            blocker = wx.StaticText(panel, label="BLOCKS BRING-UP")
             blocker.SetForegroundColour(wx.Colour(244, 67, 54))
             blocker_font = blocker.GetFont()
             blocker_font = blocker_font.Bold()
@@ -334,7 +335,7 @@ class BringUpAssistantDialog(wx.Dialog):
             sizer.Add(faults, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         
         if step.get('prevents_bringup'):
-            warning = wx.StaticText(panel, label="⚠️ CRITICAL: This step must pass for the board to function")
+            warning = wx.StaticText(panel, label="CRITICAL: This step must pass for the board to function")
             warning.SetForegroundColour(wx.Colour(244, 67, 54))
             warning_font = warning.GetFont()
             warning_font = warning_font.Bold()
@@ -387,7 +388,7 @@ class BringUpAssistantDialog(wx.Dialog):
             
             sizer.Add(scope_sizer, 0, wx.EXPAND | wx.ALL, 10)
         
-        guide_box = wx.StaticBox(panel, label="📖 General Bring-Up Guide")
+        guide_box = wx.StaticBox(panel, label="General Bring-Up Guide")
         guide_sizer = wx.StaticBoxSizer(guide_box, wx.VERTICAL)
         
         guide_text = """Recommended Bring-Up Order:
@@ -412,7 +413,7 @@ class BringUpAssistantDialog(wx.Dialog):
    - Clock sources
    - Communication interfaces
 
-⚠️ Use current limiting on first power-on to prevent damage!
+Use current limiting on first power-on to prevent damage!
 """
         
         guide_label = wx.StaticText(panel, label=guide_text)
@@ -427,15 +428,15 @@ class BringUpAssistantDialog(wx.Dialog):
         """Create the bottom button bar"""
         sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        export_btn = wx.Button(self, label="📄 Export Checklist")
+        export_btn = wx.Button(self, label="Export Checklist")
         export_btn.Bind(wx.EVT_BUTTON, self._on_export)
         sizer.Add(export_btn, 0, wx.ALL, 5)
         
-        open_new_btn = wx.Button(self, label="📂 Open Another Schematic")
+        open_new_btn = wx.Button(self, label="Open Another Schematic")
         open_new_btn.Bind(wx.EVT_BUTTON, self._on_open_new)
         sizer.Add(open_new_btn, 0, wx.ALL, 5)
         
-        help_btn = wx.Button(self, label="❓ Help")
+        help_btn = wx.Button(self, label="Help")
         help_btn.Bind(wx.EVT_BUTTON, self._on_help)
         sizer.Add(help_btn, 0, wx.ALL, 5)
 
@@ -495,7 +496,6 @@ class BringUpAssistantDialog(wx.Dialog):
             new_path = dlg.GetPath()
             dlg.Destroy()
             
-            # Close current dialog and open new one
             self.Close()
             analyze_and_show(new_path)
         else:
@@ -523,7 +523,7 @@ Tips:
 • Export the checklist to share with your team
 
 Command Line Usage:
-  python run_bringup_assistant.py [schematic.kicad_sch]
+  python bringup_plugin.py [schematic.kicad_sch]
 
 For more information, visit:
 https://github.com/evarexis/HnR2026_PCB_Debugger"""
@@ -541,24 +541,21 @@ def analyze_and_show(schematic_path):
             f"Backend analysis module not available.\n\n"
             f"Error: {IMPORT_ERROR}\n\n"
             f"Please install required dependencies:\n"
-            f"  pip install sexpdata pydantic wxPython",
+            f"  pip install sexpdata pydantic wxPython\n\n"
+            f"And make sure bridge.py exists",
             "Missing Dependencies",
             wx.OK | wx.ICON_ERROR
         )
         return False
     
     try:
-        # Show progress indicator
         busy_info = wx.BusyInfo(f"Analyzing {Path(schematic_path).name}...")
         wx.SafeYield()
         
-        # Run the analysis
         report = run(schematic_path)
         
-        # Clear busy indicator
         del busy_info
         
-        # Show results dialog
         dlg = BringUpAssistantDialog(None, report, schematic_path)
         dlg.ShowModal()
         dlg.Destroy()
@@ -566,7 +563,6 @@ def analyze_and_show(schematic_path):
         return True
         
     except Exception as e:
-        # Clear busy indicator if still active
         try:
             del busy_info
         except:
@@ -586,7 +582,6 @@ def main():
     """Main application entry point"""
     app = wx.App()
     
-    # Check if a file was provided as command line argument
     if len(sys.argv) > 1:
         schematic_path = sys.argv[1]
         
@@ -598,11 +593,9 @@ def main():
             )
             return 1
         
-        # Analyze the provided file
         analyze_and_show(schematic_path)
     
     else:
-        # Show file picker
         wildcard = "KiCad Schematic (*.kicad_sch)|*.kicad_sch|All files (*.*)|*.*"
         dlg = wx.FileDialog(
             None,
@@ -615,11 +608,9 @@ def main():
             schematic_path = dlg.GetPath()
             dlg.Destroy()
             
-            # Analyze the selected file
             analyze_and_show(schematic_path)
         else:
             dlg.Destroy()
-            # User cancelled - just exit
             return 0
     
     app.MainLoop()
