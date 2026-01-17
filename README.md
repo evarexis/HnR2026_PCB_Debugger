@@ -1,5 +1,4 @@
-# HnR2026_PCB_Debugger
-# PCB Debugger - AI-Powered Schematic Analysis
+# PCB Debugger - Schematic Analysis
 
 Analyze KiCad schematics before PCB fabrication to catch errors and generate beginner-friendly debugging checklists.
 
@@ -45,26 +44,26 @@ Without API keys, the tool automatically falls back to heuristic analysis.
 ### Basic Usage
 
 ```bash
-python main_enhanced.py path/to/your_schematic.kicad_sch
+python main.py path/to/your_schematic.kicad_sch
 ```
 
 ### Choose LLM Provider
 
 ```bash
 # Use OpenAI as primary, Gemini as fallback (default)
-python main_enhanced.py schematic.kicad_sch --llm openai --fallback gemini
+python main.py schematic.kicad_sch --llm openai --fallback gemini
 
 # Use Gemini as primary
-python main_enhanced.py schematic.kicad_sch --llm gemini --fallback heuristic
+python main.py schematic.kicad_sch --llm gemini --fallback heuristic
 
 # Use only heuristics (no API required)
-python main_enhanced.py schematic.kicad_sch --llm heuristic
+python main.py schematic.kicad_sch --llm heuristic
 ```
 
 ### Save Output
 
 ```bash
-python main_enhanced.py schematic.kicad_sch --output report.json
+python main.py schematic.kicad_sch --output report.json
 ```
 
 ## Example Output
@@ -142,7 +141,7 @@ Extracts debugging-relevant information:
 - Wire topology and junction points
 - Component proximity (for finding decoupling caps)
 
-### 2. LLM Analysis (`src/llm_analyzer.py`)
+### 2. LLM Analysis (`src/llm_analysis.py`)
 
 Sends summary to LLM with specialized prompt:
 - Identifies circuit type (555 timer, STM32, ESP32, etc.)
@@ -150,7 +149,7 @@ Sends summary to LLM with specialized prompt:
 - Recommends specific analysis functions
 - Provides debugging steps
 
-### 3. Analysis Functions (`src/analysis_functions/`) [20+ functions]
+### 3. Analysis Functions (`src/analysis/`) [20+ functions]
 
 Modular, granular functions:
 
@@ -199,7 +198,7 @@ The system is designed to be extensible:
 3. Update LLM Prompt: LLM will automatically use it
 4. No Code Changes: LLM picks functions dynamically
 
-Create new function in `src/analysis_functions/`:
+Create new function in `src/analysis/`:
 
 ```python
 def my_custom_analysis(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
@@ -227,7 +226,7 @@ def my_custom_analysis(params: Dict[str, Any], sch, net_build) -> AnalysisResult
     )
 ```
 
-Register in `src/analysis_functions/__init__.py`:
+Register in `src/analysis/__init__.py`:
 
 ```python
 from .my_module import my_custom_analysis
@@ -259,15 +258,15 @@ ANALYSIS_FUNCTIONS = {
 └────────┬────────┘
          │
          v
-┌─────────────────┐      ┌──────────────┐
+┌─────────────────┐       ┌──────────────┐
 │  LLM Analysis   │──────>│   OpenAI     │
-│  (Primary)      │      └──────────────┘
+│  (Primary)      │       └──────────────┘
 └────────┬────────┘
          │ (if fails)
          v
-┌─────────────────┐      ┌──────────────┐
+┌─────────────────┐       ┌──────────────┐
 │  LLM Analysis   │──────>│   Gemini     │
-│  (Fallback)     │      └──────────────┘
+│  (Fallback)     │       └──────────────┘
 └────────┬────────┘
          │ (if fails)
          v
@@ -288,7 +287,7 @@ ANALYSIS_FUNCTIONS = {
 │  Generate       │
 │  Final Report   │
 └─────────────────┘
-```
+
 User runs: python main_enhanced.py circuit.kicad_sch --llm openai
 
 1. Parse schematic file → Extract components, wires, labels
@@ -307,6 +306,7 @@ User runs: python main_enhanced.py circuit.kicad_sch --llm openai
    
 8. Output → JSON file + console summary
 
+```
 
 ## Troubleshooting
 
@@ -331,4 +331,4 @@ MIT License
 Pull requests welcome! To add support for new circuit types:
 1. Add analysis functions for that circuit
 2. Update heuristic detector in `src/indicators.py`
-3. Update LLM prompt examples in `src/llm_analyzer.py`
+3. Update LLM prompt examples in `src/llm_analysis.py`
