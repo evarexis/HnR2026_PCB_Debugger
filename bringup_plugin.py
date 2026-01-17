@@ -573,16 +573,13 @@ if KICAD_AVAILABLE:
             self.category = "Debug Tools"
             self.description = "Automated PCB bring-up checklist generation from schematic analysis"
             self.show_toolbar_button = True
-            # Icon paths (optional - create your own icons)
             icon_path = PLUGIN_DIR / "icon.png"
             if icon_path.exists():
                 self.icon_file_name = str(icon_path)
-            dark_icon_path = PLUGIN_DIR / "icon_dark.png"
-            if dark_icon_path.exists():
-                self.dark_icon_file_name = str(dark_icon_path)
+
 
         def Run(self):
-            """Execute the plugin"""
+            """Execute the plugin - Updated for KiCad 9.0 API"""
             if not BACKEND_AVAILABLE or run is None:
                 wx.MessageBox(
                     "Backend analysis module not available.\n\n"
@@ -593,32 +590,94 @@ if KICAD_AVAILABLE:
                     wx.OK | wx.ICON_ERROR,
                 )
                 return
-
             try:
-                # Get current schematic
-                sch = eeschema.GetCurrentSchematic()
-                if sch is None:
-                    raise RuntimeError("No schematic is currently open")
-
-                sch_path = sch.GetFileName()
+                # ============================================
+                # KiCad 9.0 API - Get Current Schematic
+                # ============================================
+                sch_path = None
+                
+                # Method 1: Try to get from KiCad API (if available)
+                try:
+                    import eeschema
+                    sch = eeschema.GetCurrentSchematic()
+                    if sch is not None:
+                        sch_path = sch.GetFileName()
+                except (ImportError, AttributeError, RuntimeError):
+                    # eeschema API not available or no schematic open
+                    pass
+                
+                # Method 2: Try wxPython window approach
+                if not sch_path:
+                    try:
+                        import wx
+                        app = wx.GetApp()
+                        if app and hasattr(app, 'GetTopWindow'):
+                            top = app.GetTopWindow()
+                            if hasattr(top, 'GetCurrentFileName'):
+                                sch_path = top.GetCurrentFileName()
+                    except:
+                        pass
+                
+                # Method 3: Fallback - Ask user to select file
                 if not sch_path or not os.path.exists(sch_path):
-                    raise RuntimeError("Schematic file not found. Please save the schematic first.")
+                    wildcard = "KiCad Schematic (*.kicad_sch)|*.kicad_sch|All files (*.*)|*.*"
+                    dlg = wx.FileDialog(
+                        None,
+                        message="Select Schematic File to Analyze",
+                        wildcard=wildcard,
+                        style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
+                    )
+                    
+                    if dlg.ShowModal() == wx.ID_OK:
+                        sch_path = dlg.GetPath()
+                    dlg.Destroy()
+                
+                # Check if we got a valid file
+                if not sch_path:
+                    wx.MessageBox(
+                        "No schematic file selected.\n\n"
+                        "Please open a schematic in KiCad or select a file.",
+                        "Bring-Up Assistant",
+                        wx.OK | wx.ICON_WARNING
+                    )
+                    return
+                
+                if not os.path.exists(sch_path):
+                    wx.MessageBox(
+                        f"Schematic file not found:\n{sch_path}\n\n"
+                        "Please save the schematic first.",
+                        "Bring-Up Assistant Error",
+                        wx.OK | wx.ICON_ERROR
+                    )
+                    return
 
+                # ============================================
+                # Run Analysis
+                # ============================================
                 # Show busy cursor
                 wx.BeginBusyCursor()
                 
-                # Run analysis
-                report = run(sch_path)
+                try:
+                    # Run the analysis
+                    report = run(sch_path)
+                except Exception as analysis_error:
+                    wx.EndBusyCursor()
+                    raise  # Re-raise to be caught by outer exception handler
                 
                 wx.EndBusyCursor()
 
-                # Show results dialog
+                # ============================================
+                # Show Results Dialog
+                # ============================================
                 dlg = BringUpAssistantDialog(None, report, sch_path)
                 dlg.ShowModal()
                 dlg.Destroy()
 
             except Exception as e:
-                wx.EndBusyCursor()
+                # Make sure busy cursor is cleared
+                if wx.IsBusy():
+                    wx.EndBusyCursor()
+                
                 error_msg = f"Error running bring-up assistant:\n\n{str(e)}\n\n"
                 error_msg += traceback.format_exc()
                 wx.MessageBox(
@@ -626,7 +685,6 @@ if KICAD_AVAILABLE:
                     "Bring-Up Assistant Error",
                     wx.OK | wx.ICON_ERROR
                 )
-
 
     # Register the plugin
     SchematicBringUpPlugin().register()

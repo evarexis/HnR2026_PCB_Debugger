@@ -19,7 +19,7 @@ from src.indicators import run_detectors
 # Import new modules
 from src.schematic_summary import generate_schematic_summary
 from src.llm_analysis import LLMAnalyzer, LLMProvider
-from src.analysis import execute_analysis_function, AnalysisResult
+from src.analysis import execute_analysis_function
 
 
 def run_heuristic_analysis(sch, net_build, detected) -> Dict[str, Any]:

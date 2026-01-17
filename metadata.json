@@ -1,0 +1,40 @@
+{
+  "$schema": "https://go.kicad.org/pcm/schemas/v1",
+  "identifier": "com.github.evarexis.HnR2026_PCB_Debugger",
+  "name": "Schematic Bring-Up Assistant",
+  "type": "plugin.action",
+  "entry_point": "bringup_plugin.py",
+
+  "description": "Automated PCB bring-up checklist generation from schematic analysis.",
+  "description_full": "The Schematic Bring-Up Assistant analyzes KiCad schematics and automatically generates comprehensive bring-up checklists for PCB debugging. It detects MCUs, power rails, clock sources, reset circuits, and common design mistakes. Ideal for first power-on testing.",
+
+  "author": {
+    "name": "Name",
+    "contact": {
+      "web": "https://github.com/evarexis/HnR2026_PCB_Debugger"
+    }
+  },
+
+  "maintainer": {
+    "name": "Name",
+    "contact": {
+      "web": "https://github.com/evarexis/HnR2026_PCB_Debugger"
+    }
+  },
+
+  "license": "MIT",
+
+  "resources": {
+    "homepage": "https://github.com/evarexis/HnR2026_PCB_Debugger",
+    "repository": "https://github.com/evarexis/HnR2026_PCB_Debugger"
+  },
+
+  "tags": [
+    "schematic",
+    "analysis",
+    "debugging",
+    "bring-up",
+    "pcb",
+    "testing"
+  ]
+}
