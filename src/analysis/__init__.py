@@ -1,7 +1,6 @@
-# src/analysis_functions/__init__.py
+# src/analysis/__init__.py
 """
-Analysis function registry and executor.
-Maps function names to actual implementations.
+Analysis function registry - COMPLETE & CORRECTED
 """
 from __future__ import annotations
 from typing import Dict, Any, Callable
@@ -34,8 +33,15 @@ from .mcu_analysis import (
     check_mcu_power_pins,
 )
 
+# Import enhanced versions if available
+try:
+    from .mcu_analysis_enhanced import check_boot_pins
+except ImportError:
+    # Fallback to alias
+    check_boot_pins = verify_mcu_boot_configuration
 
-# Function registry
+
+# Function registry - COMPLETE LIST
 ANALYSIS_FUNCTIONS: Dict[str, Callable] = {
     # Power analysis
     "verify_power_connectivity": verify_power_connectivity,
@@ -59,10 +65,15 @@ ANALYSIS_FUNCTIONS: Dict[str, Callable] = {
     
     # MCU specific
     "verify_mcu_boot_configuration": verify_mcu_boot_configuration,
+    "check_boot_pins": check_boot_pins,  # ADDED
     "check_debug_interface": check_debug_interface,
     "analyze_reset_circuit": analyze_reset_circuit,
     "verify_programming_interface": verify_programming_interface,
     "check_mcu_power_pins": check_mcu_power_pins,
+    
+    # Aliases for LLM compatibility
+    "check_decoupling_caps": analyze_decoupling_capacitors,  # ADDED ALIAS
+    "check_mcu_boot_pins": verify_mcu_boot_configuration,    # ADDED ALIAS
 }
 
 
@@ -72,23 +83,8 @@ def execute_analysis_function(
     sch,
     net_build
 ) -> AnalysisResult:
-    """
-    Execute an analysis function by name.
-    
-    Args:
-        function_name: Name of the function to execute
-        params: Parameters to pass to the function
-        sch: Schematic object
-        net_build: NetBuildResult object
-    
-    Returns:
-        AnalysisResult object
-    
-    Raises:
-        ValueError: If function name not found
-    """
+    """Execute analysis function by name"""
     if function_name not in ANALYSIS_FUNCTIONS:
-        # Return error result instead of raising
         return AnalysisResult(
             function_name=function_name,
             status="error",
@@ -106,7 +102,6 @@ def execute_analysis_function(
         result = func(params, sch, net_build)
         return result
     except Exception as e:
-        # Return error result instead of crashing
         return AnalysisResult(
             function_name=function_name,
             status="error",

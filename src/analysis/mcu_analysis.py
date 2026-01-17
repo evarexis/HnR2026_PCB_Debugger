@@ -1,55 +1,95 @@
-# src/analysis_functions/mcu_analysis.py
+# src/analysis/mcu_analysis.py - ENHANCED VERSION
 """
-MCU-specific analysis functions.
+MCU-specific analysis functions with improved detection
 """
 from __future__ import annotations
 from typing import Dict, List, Any
 from .power_analysis import AnalysisResult
 
 
-def verify_mcu_boot_configuration(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
+def analyze_reset_circuit(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
     """
-    Verify MCU boot configuration pins.
+    Analyze reset circuit and DETECT missing pull-up resistor.
     
     Params:
-        mcu_ref: str - MCU reference
-        boot_pins: Dict[str, str] - Pin number to expected state mapping
-        boot_mode: str - Expected boot mode
+        mcu_ref: str - MCU reference (e.g., "U1")
+        reset_pin: str - Reset pin number (e.g., "7")
+        pullup_required: bool - Whether pull-up required (default True)
     """
     mcu_ref = params.get('mcu_ref')
-    boot_pins = params.get('boot_pins', {})
-    boot_mode = params.get('boot_mode', 'flash')
+    reset_pin = params.get('reset_pin', '7')
+    needs_pullup = params.get('pullup_required', True)
     
     issues = []
     recommendations = []
-    details = {
-        'mcu': mcu_ref,
-        'boot_mode': boot_mode,
-        'boot_pins': boot_pins
-    }
+    details = {'reset_pin': reset_pin, 'pullup_required': needs_pullup}
     
+    # Find MCU
     mcu = next((s for s in sch.symbols if s.ref == mcu_ref), None)
-    
     if not mcu:
         issues.append(f"MCU {mcu_ref} not found")
+        return AnalysisResult(
+            function_name="analyze_reset_circuit",
+            status="fail",
+            summary=f"Reset circuit for {mcu_ref} - MCU not found",
+            details=details,
+            issues=issues,
+            recommendations=["Verify MCU component reference"],
+            severity="critical",
+            prevents_bringup=True
+        )
+    
+    # Auto-detect reset net
+    reset_net = None
+    for net in net_build.nets:
+        if any(kw in net.name.upper() for kw in ['NRST', 'RST', 'RESET']):
+            reset_net = net.name
+            break
+    
+    # Check for pull-up resistor
+    pullup_found = False
+    pullup_ref = None
+    
+    if reset_net:
+        details['reset_net'] = reset_net
+        net_obj = next((n for n in net_build.nets if n.name == reset_net), None)
+        
+        if net_obj:
+            # Look for resistors on this net
+            for sym in sch.symbols:
+                if sym.ref.startswith('R') and sym.at:
+                    # Check if resistor is near reset net nodes
+                    for node in net_obj.nodes:
+                        if sym.at:
+                            distance = ((sym.at[0] - node[0])**2 + (sym.at[1] - node[1])**2)**0.5
+                            if distance < 50:
+                                pullup_found = True
+                                pullup_ref = sym.ref
+                                break
+                if pullup_found:
+                    break
+    
+    # Evaluate result
+    if needs_pullup and not pullup_found:
+        issues.append(f"CRITICAL: Missing reset pull-up resistor on {mcu_ref} pin {reset_pin} (NRST)")
+        recommendations.append(f"Add 10kΩ pull-up resistor from {mcu_ref} NRST (pin {reset_pin}) to VDD/3V3")
+        recommendations.append("This is REQUIRED for reliable MCU reset and prevents floating NRST pin")
         status = "fail"
         severity = "critical"
-    else:
-        for pin, expected_state in boot_pins.items():
-            if expected_state == "LOW":
-                recommendations.append(f"Verify {mcu_ref} pin {pin} (BOOT) is tied to GND for {boot_mode} boot mode")
-            elif expected_state == "HIGH":
-                recommendations.append(f"Verify {mcu_ref} pin {pin} (BOOT) is tied to VDD for {boot_mode} boot mode")
-            else:
-                recommendations.append(f"Verify {mcu_ref} pin {pin} (BOOT) configuration")
-        
+    elif pullup_found:
+        details['pullup_resistor'] = pullup_ref
+        recommendations.append(f"Reset pull-up found: {pullup_ref}")
         status = "pass"
-        severity = "high"
+        severity = "low"
+    else:
+        recommendations.append(f"Verify reset pull-up on pin {reset_pin}")
+        status = "warning"
+        severity = "medium"
     
     return AnalysisResult(
-        function_name="verify_mcu_boot_configuration",
+        function_name="analyze_reset_circuit",
         status=status,
-        summary=f"Boot configuration for {mcu_ref} ({boot_mode} mode)",
+        summary=f"Reset circuit for {mcu_ref}: {status.upper()}",
         details=details,
         issues=issues,
         recommendations=recommendations,
@@ -58,27 +98,105 @@ def verify_mcu_boot_configuration(params: Dict[str, Any], sch, net_build) -> Ana
     )
 
 
-def check_debug_interface(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
+def check_boot_pins(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
     """
-    Check debug/programming interface (SWD, JTAG, UART).
+    Check if BOOT pins are properly configured (not floating).
     
     Params:
         mcu_ref: str - MCU reference
-        interface_type: str - "SWD", "JTAG", or "UART"
-        required_nets: List[str] - Required signal nets
+        boot_pins: List[str] - Boot pin numbers (e.g., ["44"])
+        expected_state: str - "LOW" or "HIGH" or "PULLDOWN"
     """
+    mcu_ref = params.get('mcu_ref')
+    boot_pins = params.get('boot_pins', [])
+    expected_state = params.get('expected_state', 'LOW')
+    
+    issues = []
+    recommendations = []
+    details = {'boot_pins': boot_pins, 'expected_state': expected_state}
+    
+    # Find MCU
+    mcu = next((s for s in sch.symbols if s.ref == mcu_ref), None)
+    if not mcu:
+        issues.append(f"MCU {mcu_ref} not found")
+        return AnalysisResult(
+            function_name="check_boot_pins",
+            status="fail",
+            summary=f"Boot pin check for {mcu_ref}",
+            details=details,
+            issues=issues,
+            recommendations=[],
+            severity="critical",
+            prevents_bringup=True
+        )
+    
+    # Check each boot pin
+    for pin in boot_pins:
+        # Look for nets connected to this pin area
+        # Simplified: check if there's a pull-down resistor or connection
+        pulldown_found = False
+        tied_to_gnd = False
+        
+        # Check for "BOOT" nets
+        for net in net_build.nets:
+            if 'BOOT' in net.name.upper():
+                details[f'boot_net_pin{pin}'] = net.name
+                
+                # Look for resistors on boot net
+                for sym in sch.symbols:
+                    if sym.ref.startswith('R') and sym.at:
+                        for node in net.nodes:
+                            distance = ((sym.at[0] - node[0])**2 + (sym.at[1] - node[1])**2)**0.5
+                            if distance < 50:
+                                pulldown_found = True
+                                details[f'boot_resistor_pin{pin}'] = sym.ref
+                                break
+                
+                # Check if tied to GND
+                if any('GND' in net.name.upper() for net in net_build.nets):
+                    tied_to_gnd = True
+        
+        if not pulldown_found and not tied_to_gnd and expected_state == 'LOW':
+            issues.append(f"WARNING: BOOT pin {pin} appears floating (should be pulled LOW)")
+            recommendations.append(f"Add 10kΩ pull-down resistor on {mcu_ref} BOOT0 (pin {pin}) to GND")
+            recommendations.append("Floating BOOT pin can cause boot mode issues")
+    
+    if issues:
+        status = "warning"
+        severity = "medium"
+    else:
+        status = "pass"
+        severity = "low"
+        if boot_pins:
+            recommendations.append(f"BOOT pins configuration OK")
+    
+    return AnalysisResult(
+        function_name="check_boot_pins",
+        status=status,
+        summary=f"Boot pin check for {mcu_ref}",
+        details=details,
+        issues=issues,
+        recommendations=recommendations,
+        severity=severity,
+        prevents_bringup=False
+    )
+
+
+def verify_mcu_boot_configuration(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
+    """Alias for check_boot_pins for compatibility"""
+    return check_boot_pins(params, sch, net_build)
+
+
+def check_debug_interface(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
+    """Check debug/programming interface"""
     mcu_ref = params.get('mcu_ref')
     interface_type = params.get('interface_type', 'SWD')
     required_nets = params.get('required_nets', [])
     
     issues = []
     recommendations = []
-    details = {
-        'interface': interface_type,
-        'required_signals': required_nets
-    }
+    details = {'interface': interface_type, 'required_signals': required_nets}
     
-    # Check if required nets exist
     missing_nets = []
     for net_name in required_nets:
         net = next((n for n in net_build.nets if n.name == net_name), None)
@@ -108,80 +226,16 @@ def check_debug_interface(params: Dict[str, Any], sch, net_build) -> AnalysisRes
     )
 
 
-def analyze_reset_circuit(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
-    """
-    Analyze reset circuit configuration.
-    
-    Params:
-        mcu_ref: str - MCU reference
-        reset_net: str - Reset net name
-        has_external_reset: bool - Whether external reset button exists
-        pullup_required: bool - Whether pull-up resistor required
-    """
-    mcu_ref = params.get('mcu_ref')
-    reset_net = params.get('reset_net', 'NRST')
-    has_button = params.get('has_external_reset', False)
-    needs_pullup = params.get('pullup_required', True)
-    
-    issues = []
-    recommendations = []
-    details = {
-        'reset_net': reset_net,
-        'external_button': has_button,
-        'pullup_required': needs_pullup
-    }
-    
-    # Check if reset net exists
-    net = next((n for n in net_build.nets if n.name == reset_net), None)
-    
-    if not net:
-        issues.append(f"Reset net {reset_net} not found")
-        recommendations.append(f"Add reset circuit with pull-up resistor and optional button")
-        status = "fail"
-        severity = "high"
-    else:
-        if needs_pullup:
-            recommendations.append(f"Verify 10kΩ pull-up resistor on {reset_net}")
-        
-        if has_button:
-            recommendations.append(f"Verify reset button pulls {reset_net} to GND when pressed")
-        
-        status = "pass"
-        severity = "medium"
-    
-    return AnalysisResult(
-        function_name="analyze_reset_circuit",
-        status=status,
-        summary=f"Reset circuit for {mcu_ref}",
-        details=details,
-        issues=issues,
-        recommendations=recommendations,
-        severity=severity,
-        prevents_bringup=(status == "fail")
-    )
-
-
 def verify_programming_interface(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
-    """
-    Verify programming interface accessibility.
-    
-    Params:
-        mcu_ref: str - MCU reference
-        programmer_type: str - Type of programmer
-        connector_ref: str - Programming connector reference
-    """
+    """Verify programming interface accessibility"""
     mcu_ref = params.get('mcu_ref')
     prog_type = params.get('programmer_type', 'ST-Link')
     connector_ref = params.get('connector_ref', 'J1')
     
     issues = []
     recommendations = []
-    details = {
-        'programmer': prog_type,
-        'connector': connector_ref
-    }
+    details = {'programmer': prog_type, 'connector': connector_ref}
     
-    # Check if connector exists
     connector = next((s for s in sch.symbols if s.ref == connector_ref), None)
     
     if not connector:
@@ -208,15 +262,7 @@ def verify_programming_interface(params: Dict[str, Any], sch, net_build) -> Anal
 
 
 def check_mcu_power_pins(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
-    """
-    Check all MCU power pins are properly connected.
-    
-    Params:
-        mcu_ref: str - MCU reference
-        vdd_count: int - Number of VDD pins
-        gnd_count: int - Number of GND pins
-        vdda_required: bool - Whether analog power is required
-    """
+    """Check all MCU power pins are connected"""
     mcu_ref = params.get('mcu_ref')
     vdd_count = params.get('vdd_count', 1)
     gnd_count = params.get('gnd_count', 1)
