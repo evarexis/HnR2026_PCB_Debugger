@@ -279,3 +279,45 @@ def check_power_sequencing(params: Dict[str, Any], sch, net_build) -> AnalysisRe
         severity=severity,
         prevents_bringup=False
     )
+
+
+def detect_multi_voltage_system(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
+    """
+    Detect if multiple voltage domains exist.
+    """
+    voltage_nets = set()
+    for net in net_build.nets:
+        name = net.name.upper()
+        if name.startswith('+') or name.endswith('V') or 'VDD' in name or 'VCC' in name:
+            if 'GND' not in name and 'SW' not in name:
+                voltage_nets.add(net.name)
+
+    distinct_voltages = set()
+    for v in voltage_nets:
+        if '3V3' in v or '3.3V' in v: distinct_voltages.add('3.3V')
+        elif '5V' in v: distinct_voltages.add('5V')
+        elif '12V' in v: distinct_voltages.add('12V')
+        elif '1V8' in v or '1.8V' in v: distinct_voltages.add('1.8V')
+
+    issues = []
+    recommendations = []
+    details = {'detected_voltages': list(distinct_voltages)}
+    
+    status = "info"
+    summary = "Power system analysis"
+    
+    if len(distinct_voltages) > 1:
+        summary = "Multi-Voltage Power System Detected"
+        issues.append(f"System uses multiple voltage levels: {', '.join(distinct_voltages)}")
+        recommendations.append("Verify level shifters for signals crossing voltage domains")
+    
+    return AnalysisResult(
+        function_name="detect_multi_voltage_system",
+        status=status,
+        summary=summary,
+        details=details,
+        issues=issues, 
+        recommendations=recommendations,
+        severity="info",
+        prevents_bringup=False
+    )

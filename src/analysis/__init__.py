@@ -10,6 +10,7 @@ from .power_analysis import (
     analyze_decoupling_capacitors,
     verify_voltage_regulator_circuit,
     check_power_sequencing,
+    detect_multi_voltage_system, 
     AnalysisResult
 )
 from .timing_analysis import (
@@ -24,6 +25,7 @@ from .signal_analysis import (
     verify_ground_plane,
     check_differential_pairs,
     analyze_signal_termination,
+    verify_i2c_bus, 
 )
 from .mcu_analysis import (
     verify_mcu_boot_configuration,
@@ -49,6 +51,7 @@ ANALYSIS_FUNCTIONS: Dict[str, Callable] = {
     "analyze_decoupling_capacitors": analyze_decoupling_capacitors,
     "verify_voltage_regulator_circuit": verify_voltage_regulator_circuit,
     "check_power_sequencing": check_power_sequencing,
+    "detect_multi_voltage_system": detect_multi_voltage_system, 
     
     # Timing/clock analysis
     "analyze_rc_timing_network": analyze_rc_timing_network,
@@ -62,18 +65,19 @@ ANALYSIS_FUNCTIONS: Dict[str, Callable] = {
     "verify_ground_plane": verify_ground_plane,
     "check_differential_pairs": check_differential_pairs,
     "analyze_signal_termination": analyze_signal_termination,
+    "verify_i2c_bus": verify_i2c_bus, 
     
     # MCU specific
     "verify_mcu_boot_configuration": verify_mcu_boot_configuration,
-    "check_boot_pins": check_boot_pins,  # ADDED
+    "check_boot_pins": check_boot_pins,
     "check_debug_interface": check_debug_interface,
     "analyze_reset_circuit": analyze_reset_circuit,
     "verify_programming_interface": verify_programming_interface,
     "check_mcu_power_pins": check_mcu_power_pins,
     
     # Aliases for LLM compatibility
-    "check_decoupling_caps": analyze_decoupling_capacitors,  # ADDED ALIAS
-    "check_mcu_boot_pins": verify_mcu_boot_configuration,    # ADDED ALIAS
+    "check_decoupling_caps": analyze_decoupling_capacitors,  
+    "check_mcu_boot_pins": verify_mcu_boot_configuration,   
 }
 
 

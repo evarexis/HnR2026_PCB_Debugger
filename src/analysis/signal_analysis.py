@@ -7,17 +7,25 @@ from typing import Dict, List, Any
 from .power_analysis import AnalysisResult
 
 
+def _is_pin_connected(at, net_build) -> bool:
+    """Check if a coordinate is connected to any net node."""
+    if not at: return False
+    x, y = at
+    # Tolerance for connection (2.54 units = 100 mil)
+    TOLERANCE = 3.0 
+    for net in net_build.nets:
+        for nx, ny in net.nodes:
+            if abs(x - nx) <= TOLERANCE and abs(y - ny) <= TOLERANCE:
+                return True
+    return False
+
 def check_floating_pins(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
     """
     Check for floating pins that should be tied high or low.
-    
-    Params:
-        ic_ref: str - IC reference
-        critical_pins: List[str] - Pin numbers that must not float
-        expected_state: str - "HIGH" or "LOW"
     """
     ic_ref = params.get('ic_ref')
     critical_pins = params.get('critical_pins', [])
+    exclude_pins = params.get('exclude_pins', ["NC", "NB"])
     expected_state = params.get('expected_state', 'HIGH')
     
     issues = []
@@ -31,22 +39,46 @@ def check_floating_pins(params: Dict[str, Any], sch, net_build) -> AnalysisResul
         status = "fail"
         severity = "critical"
     else:
-        # This is simplified - real implementation would check actual pin connections
-        # For now, we'll check if there are nets connected near the IC
-        
         details['ic'] = ic_ref
-        details['critical_pins'] = critical_pins
-        details['expected_state'] = expected_state
+        details['checked_pins'] = []
         
-        # Generic recommendation based on expected state
-        if expected_state == "HIGH":
-            recommendations.append(f"Verify {ic_ref} pins {', '.join(critical_pins)} are tied to VDD or pulled high")
+        floating = []
+        
+        # Determine absolute position of IC
+        if not ic.at:
+            issues.append(f"IC {ic_ref} has no position data")
+            status = "fail"
         else:
-            recommendations.append(f"Verify {ic_ref} pins {', '.join(critical_pins)} are tied to GND or pulled low")
-        
-        status = "pass"
-        severity = "medium"
-    
+            ix, iy = ic.at
+            
+            # Check pins
+            for pin in ic.pins:
+                p_name = pin.get('name', '??')
+                p_num = pin.get('number', '?')
+                
+                # Filter info
+                if p_name in exclude_pins or p_num in exclude_pins:
+                    continue
+                if critical_pins and p_num not in critical_pins:
+                    continue
+                
+                # Check connection
+                if 'at' in pin:
+                    px, py = pin['at']
+                    abs_at = (ix + px, iy + py)
+                    
+                    if not _is_pin_connected(abs_at, net_build):
+                        floating.append(f"{p_num}({p_name})")
+                        
+            if floating:
+                status = "warning"
+                severity = "medium"
+                issues.append(f"Pins floating: {', '.join(floating)}")
+                recommendations.append(f"Verify {ic_ref} pins {', '.join(floating)} are connected")
+            else:
+                status = "pass"
+                severity = "low"
+
     return AnalysisResult(
         function_name="check_floating_pins",
         status=status,
@@ -57,6 +89,7 @@ def check_floating_pins(params: Dict[str, Any], sch, net_build) -> AnalysisResul
         severity=severity,
         prevents_bringup=(status == "fail")
     )
+
 
 
 def verify_pull_up_pull_down(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
@@ -267,4 +300,101 @@ def analyze_signal_termination(params: Dict[str, Any], sch, net_build) -> Analys
         recommendations=recommendations,
         severity=severity,
         prevents_bringup=False
+    )
+
+
+def verify_i2c_bus(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
+    """
+    Check for I2C configuration (Pull-ups).
+    """
+    # 1. Find I2C nets
+    i2c_nets = []
+    for net in net_build.nets:
+        if 'SDA' in net.name.upper() or 'SCL' in net.name.upper():
+            i2c_nets.append(net)
+            
+    # 2. Fallback: Find I2C pins on components if no nets named SDA/SCL
+    found_i2c_pins = False
+    floating_i2c_pins = []
+    
+    if not i2c_nets:
+        # Scan symbols for SDA/SCL pins
+        for sym in sch.symbols:
+            if not sym.at: continue
+            sx, sy = sym.at
+            for pin in sym.pins:
+                name = pin.get('name', '').upper()
+                if 'SDA' in name or 'SCL' in name:
+                    found_i2c_pins = True
+                    # Check if connected
+                    if 'at' in pin:
+                        px, py = pin['at']
+                        abs_at = (sx + px, sy + py)
+                        if not _is_pin_connected(abs_at, net_build):
+                            floating_i2c_pins.append(f"{sym.ref}.{name}")
+
+    issues = []
+    recommendations = []
+    details = {'i2c_nets': [n.name for n in i2c_nets]}
+    status = "pass"
+    severity = "low"
+    
+    if i2c_nets:
+        summary = f"I2C bus detected: {', '.join(n.name for n in i2c_nets)}"
+        status = "pass"
+        # Check for pull-ups (resistors connected to these nets AND power)
+        # Simplified: just look for Resistors on the net
+        for net in i2c_nets:
+            has_resistor = False
+            for node in net.nodes:
+                # Find component at node
+                # Heuristic: iterate symbols, check IF resistor, check IF pin at node
+                for sym in sch.symbols:
+                    if sym.ref.startswith('R') and sym.at:
+                        # Check pins
+                        r_sx, r_sy = sym.at
+                        for r_pin in sym.pins:
+                            if 'at' in r_pin:
+                                rx, ry = r_pin['at']
+                                r_abs = (r_sx + rx, r_sy + ry)
+                                # Distance check
+                                if abs(r_abs[0] - node[0]) < 3.0 and abs(r_abs[1] - node[1]) < 3.0:
+                                    has_resistor = True
+                                    break
+                    if has_resistor: break
+            
+            if not has_resistor:
+                issues.append(f"No pull-up resistor detected on I2C net {net.name}")
+                recommendations.append(f"Add 2.2k-10k pull-up resistor on {net.name}")
+                status = "warning"
+                severity = "medium"
+                
+    elif found_i2c_pins:
+        summary = "I2C pins detected but no bus formed"
+        if floating_i2c_pins:
+            issues.append(f"I2C pins found floating: {', '.join(floating_i2c_pins)}")
+            recommendations.append("Connect I2C pins to bus and add pull-up resistors")
+            status = "fail"
+            severity = "high"
+        else:
+            # Pins found, connected, but nets not named SDA/SCL?
+            summary += " (Nets unnamed)"
+            status = "info"
+            recommendations.append("Verify I2C nets are connected and named properly")
+            
+    else:
+        summary = "No I2C bus detected"
+
+    if issues and status == "pass":
+        status = "warning"
+
+    return AnalysisResult(
+        function_name="verify_i2c_bus",
+        status=status,
+        summary=summary,
+        details=details,
+        issues=issues,
+        recommendations=recommendations,
+        severity=severity,
+        prevents_bringup=(status == "fail")
     )

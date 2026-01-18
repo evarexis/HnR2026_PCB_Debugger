@@ -21,8 +21,7 @@ from main import run_heuristic_analysis, run_analysis_pipeline, generate_final_r
 
 
 st.set_page_config(
-    page_title="PCB Debugger",
-    page_icon="🔍",
+    page_title="PreFab",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -278,7 +277,7 @@ def display_checklist(report: Dict[str, Any]):
                 st.success(f"✓ Expected: {step_data.get('expected', 'Completed')}")
     
     if general_steps:
-        st.subheader("🚀 General Bring-Up Steps")
+        st.subheader("General Bring-Up Steps")
         for step_data in general_steps:
             step_num = step_data.get('step', 0)
             key = f"general_step_{step_num}"
@@ -298,7 +297,7 @@ def display_checklist(report: Dict[str, Any]):
 
 def display_analysis_results(report: Dict[str, Any]):
     """Display detailed analysis results"""
-    st.header("🔬 Detailed Analysis Results")
+    st.header("Detailed Analysis Results")
     
     analysis_results = report.get('analysis_results', [])
     
@@ -329,7 +328,7 @@ def display_analysis_results(report: Dict[str, Any]):
                     st.write(f"- {rec}")
             
             if result.get('details'):
-                with st.expander("📋 Technical Details", expanded=False):
+                with st.expander("Technical Details", expanded=False):
                     st.json(result['details'])
 
 
@@ -410,7 +409,6 @@ def run_schematic_analysis(uploaded_file, llm_choice: str, fallback_choice: str)
         return report
         
     finally:
-        # Clean up temporary file
         if schematic_path.exists():
             schematic_path.unlink()
 
@@ -422,7 +420,7 @@ def main():
     
     with st.sidebar:
         st.image("icon.png", width=100)
-        st.title("PCB Debugger")
+        st.title("PreLab")
         st.markdown("---")
         
         st.header("Settings")
@@ -466,7 +464,7 @@ def main():
         st.markdown("---")
         st.markdown("###About")
         st.markdown("""
-        PCB Debugger analyzes KiCad schematics before fabrication to catch errors 
+        Prelab analyzes KiCad schematics before fabrication to catch errors 
         and generate debugging checklists.
         
         **Features:**
@@ -476,7 +474,7 @@ def main():
         - Risk assessment
         """)
     
-    st.title("🔍 PCB Debugger") #can replace
+    st.title("PreLab")
     st.markdown("Upload your KiCad schematic file to analyze for potential issues before PCB fabrication.")
     
     uploaded_file = st.file_uploader(
@@ -499,7 +497,6 @@ def main():
                     st.error(f"Analysis failed: {str(e)}")
                     st.exception(e)
     
-    # Display results if analysis is done
     if st.session_state.analysis_done and st.session_state.report:
         report = st.session_state.report
         
@@ -581,7 +578,7 @@ def main():
 {chr(10).join(f"- {blocker}" for blocker in report['overall_risk'].get('blockers', []))}
 """
                 st.download_button(
-                    label="📥 Download Summary (Markdown)",
+                    label="Download Summary (Markdown)",
                     data=summary_text,
                     file_name=f"pcb_summary_{uploaded_file.name}.md",
                     mime="text/markdown"

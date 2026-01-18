@@ -1,6 +1,6 @@
-# PCB Debugger - Schematic Analysis
+# PreFab
 
-Analyze KiCad schematics before PCB fabrication to catch errors and generate beginner-friendly debugging checklists.
+AI powered schematic tool used before PCB fabrication to catch errors and generate beginner-friendly debugging checklists.
 
 ## Features
 
@@ -71,11 +71,11 @@ The app will automatically open in your browser at `http://localhost:8501`
 2. **Configure**: Choose LLM provider in sidebar (OpenAI, Gemini, or Heuristic)
 3. **Analyze**: Click "Run Analysis" button
 4. **Review**: Navigate through tabs to see:
-   - 📊 Summary: Circuit analysis and component inventory
-   - ⚠️ Issues: Detected problems grouped by severity
-   - ✅ Checklist: Interactive bring-up steps with checkboxes
-   - 🔬 Detailed Analysis: Full results from all analysis functions
-   - 📄 Export: Download JSON or Markdown reports
+   - Summary: Circuit analysis and component inventory
+   - Issues: Detected problems grouped by severity
+   - Checklist: Interactive bring-up steps with checkboxes
+   - Detailed Analysis: Full results from all analysis functions
+   - Export: Download JSON or Markdown reports
 5. **Track Progress**: Check off completed steps in the bring-up checklist
 
 ### Command Line Interface

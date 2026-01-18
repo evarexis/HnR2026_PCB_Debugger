@@ -63,9 +63,22 @@ def analyze_reset_circuit(params: Dict[str, Any], sch, net_build) -> AnalysisRes
                         if sym.at:
                             distance = ((sym.at[0] - node[0])**2 + (sym.at[1] - node[1])**2)**0.5
                             if distance < 50:
-                                pullup_found = True
-                                pullup_ref = sym.ref
-                                break
+                                # Found a resistor on the reset net. 
+                                # Now check if it's also close to a power net (indicating pull-up)
+                                is_pullup = False
+                                for pwr_net in net_build.nets:
+                                    if pwr_net.name in ['VDD', 'VCC', '+3V3', '+5V', '3V3', '5V']:
+                                        for pwr_node in pwr_net.nodes:
+                                            pwr_dist = ((sym.at[0] - pwr_node[0])**2 + (sym.at[1] - pwr_node[1])**2)**0.5
+                                            if pwr_dist < 100: # Allow some distance for the resistor body
+                                                is_pullup = True
+                                                break
+                                    if is_pullup: break
+                                
+                                if is_pullup:
+                                    pullup_found = True
+                                    pullup_ref = sym.ref
+                                    break
                 if pullup_found:
                     break
     

@@ -89,8 +89,63 @@ def build_nets(sch: Schematic, label_tolerance: int = 0) -> NetBuildResult:
             # If multiple labels, choose a stable "best" name
             name = sorted(names, key=lambda s: (len(s), s))[0]
         else:
-            unnamed_count += 1
-            name = f"NET_UNNAMED_{unnamed_count}"
+            # Try to infer name from connected component pins
+            pin_names = []
+            
+            # This is inefficient to do inside the loop, but robust for now
+            # In a real system, we'd pre-calculate pin positions map
+            for sym in sch.symbols:
+                if not sym.at: continue
+                # Simple transform: assume rot=0 for now (or minimal rot)
+                # Correct full transform requires parsing transform matrix
+                sx, sy = sym.at
+                
+                for pin in sym.pins:
+                    if "at" not in pin: continue
+                    px, py = pin["at"]
+                    # Absolute pos: simplified (ignores rotation)
+                    abs_x, abs_y = sx + px, sy + py
+                    
+                    # DEBUG: Print for critical components
+                    if sym.ref.startswith('U') or 'SDA' in str(pin.get('name')):
+                       print(f"DEBUG: {sym.ref} Pin {pin.get('name')} Rel({px},{py}) Abs({abs_x:.2f},{abs_y:.2f})")
+                    
+                    # Check if this point is in the net (with tolerance)
+                    # Use _nearest_node which is already defined
+                    # We need to check if (abs_x, abs_y) is in 'comp' set of nodes
+                    
+                    # Optimization: check exact match first
+                    if (abs_x, abs_y) in comp:
+                        if "name" in pin: pin_names.append(pin["name"])
+                    else:
+                        # Check close proximity (tolerance 2 units)
+                        # KiCad units might be imperfect in float
+                        matched = False
+                        for cx, cy in comp:
+                            if abs(cx - abs_x) <= 2.54 and abs(cy - abs_y) <= 2.54: # Increased tolerance to 2.54 (1 grid unit typically 1.27 or 2.54)
+                                if "name" in pin: 
+                                    pin_names.append(pin["name"])
+                                    print(f"DEBUG: Match {sym.ref}.{pin['name']} to net node ({cx},{cy})")
+                                matched = True
+                                break
+                        
+                        # DEBUG
+                        if not matched and (sym.ref.startswith('U') or 'SDA' in str(pin.get('name'))):
+                           print(f"DEBUGGING NO MATCH: {sym.ref}.{pin.get('name')} at ({abs_x:.2f},{abs_y:.2f})")
+                            
+            # Filter and choose best pin name
+            # Priority: Specific signals > Generic
+            special_names = [n for n in pin_names if any(k in n.upper() for k in ['SDA', 'SCL', 'RST', 'BOOT', 'SWD', 'CLK', 'RX', 'TX', 'NRST'])]
+            
+            if special_names:
+                name = sorted(special_names)[0] # Pick lexicographically first special name
+            elif pin_names:
+                # Avoid very generic names if possible, but better than UNNAMED
+                # Maybe fallback to "Net-(Ref-PinName)"
+                name = f"Net-{pin_names[0]}"
+            else:
+                unnamed_count += 1
+                name = f"NET_UNNAMED_{unnamed_count}"
 
         nets.append(Net(name=name, nodes=comp))
 

@@ -60,33 +60,84 @@ def _get_kv(props: List[Any]) -> Dict[str, str]:
 def parse_schematic(tree: list) -> Schematic:
     sch = Schematic()
 
-    # Symbols
-    for sym in _find_all(tree, "symbol"):
-        # Common pattern: (symbol (lib_id "...") (at x y ...) (property "Reference" "U1") ...)
-        lib_id = ""
-        at = None
-        props = []
-        for item in sym[1:]:
-            if isinstance(item, list) and item:
-                if item[0] == "lib_id" and len(item) >= 2:
-                    lib_id = str(item[1]).strip('"')
-                elif item[0] == "at" and len(item) >= 3:
-                    at = (int(float(item[1])), int(float(item[2])))
-                elif item[0] == "property":
-                    props.append(item)
+    # First pass: Parse library symbols to get default pin configurations
+    lib_pins = {} # "LibID": [ {name, number, at, type, shape} ]
+    
+    all_symbols = _find_all(tree, "symbol")
+    
+    # 1. Extract Library Definitions
+    for sym in all_symbols:
+        if len(sym) > 1 and isinstance(sym[1], str):
+            # This is a library definition: (symbol "LibID" ...)
+            lib_name = sym[1]
+            pins = []
+            
+            # Pins can be directly in symbol or nested in sub-units (symbol "LibID_1_1" ...)
+            # We need to recursively find pins inside this definition block using _find_all
+            # Note: _find_all(sym, "pin") will suffice
+            
+            for p in _find_all(sym, "pin"):
+                 # (pin type shape (at x y r) (length ...) (name "..." ...) (number "..." ...))
+                if len(p) < 3: continue
+                pin_data = {"type": p[1], "shape": p[2]}
+                for attr in p[3:]:
+                    if not isinstance(attr, list) or not attr: continue
+                    if attr[0] == "at" and len(attr) >= 3:
+                         pin_data["at"] = (round(float(attr[1])), round(float(attr[2])))
+                    elif attr[0] == "name" and len(attr) >= 2:
+                        pin_data["name"] = str(attr[1]).strip('"')
+                    elif attr[0] == "number" and len(attr) >= 2:
+                        pin_data["number"] = str(attr[1]).strip('"')
+                
+                if "at" in pin_data:
+                    pins.append(pin_data)
+            
+            lib_pins[lib_name] = pins
 
-        prop_map = _get_kv(props)
-        ref = prop_map.get("Reference", prop_map.get("Ref", ""))
-        # If reference looks incomplete (e.g., "U"), try other common keys
-        if ref and ref.isalpha():
-           ref = f"{ref}?"
+    # 2. Extract Schematic Instances
+    for sym in all_symbols:
+        # Instance: (symbol (lib_id "LibID") (at x y r) ...)
+        # The first item is a LIST (property list or attribute), not a string
+        if len(sym) > 1 and isinstance(sym[1], list):
+            lib_id = ""
+            at = None
+            props = []
+            
+            for item in sym[1:]:
+                if isinstance(item, list) and item:
+                    if item[0] == "lib_id" and len(item) >= 2:
+                        lib_id = str(item[1]).strip('"')
+                    elif item[0] == "at" and len(item) >= 3:
+                        at = (round(float(item[1])), round(float(item[2])))
+                    elif item[0] == "property":
+                        props.append(item)
 
-        value = prop_map.get("Value", prop_map.get("Val", ""))
+            prop_map = _get_kv(props)
+            ref = prop_map.get("Reference", prop_map.get("Ref", ""))
+            if ref and ref.isalpha(): ref = f"{ref}?"
+            value = prop_map.get("Value", prop_map.get("Val", ""))
 
-        sch.symbols.append(
-            SchSymbol(ref=ref, value=value, lib_id=lib_id, at=at, properties=prop_map)
-        )
-
+            # Look up pins from library
+            # Attempt to find exact match or match base lib name
+            # Instance lib_id: "Device:C". Lib definition might be "Device:C"
+            instance_pins = []
+            if lib_id in lib_pins:
+                instance_pins = lib_pins[lib_id]
+            
+            # Create symbol
+            # Note: `at` here is the component position. `pins` have relative position.
+            # We store the pins as-is (relative) and let netlist_build handle the transform,
+            # OR we could pre-calculate absolute here. 
+            # Sticking to relative for consistency with `SchSymbol` design which implies 'at' is origin.
+            
+            sch.symbols.append(
+                SchSymbol(ref=ref, value=value, lib_id=lib_id, at=at, properties=prop_map, pins=instance_pins)
+            )
+            
+            # Power Port Handling
+            if lib_id.lower().startswith("power:") and at:
+                sch.labels.append(SchLabel(text=value, at=at, kind="global_label"))
+            
     # Labels (local/global)
     for head, kind in [("label", "label"), ("global_label", "global_label"), ("hierarchical_label", "hierarchical_label")]:
         for lab in _find_all(tree, head):
@@ -96,7 +147,7 @@ def parse_schematic(tree: list) -> Schematic:
                 if isinstance(item, str) and text == "":
                     text = item.strip('"')
                 if isinstance(item, list) and item and item[0] == "at" and len(item) >= 3:
-                    at = (int(float(item[1])), int(float(item[2])))
+                    at = (round(float(item[1])), round(float(item[2])))
             if text:
                 sch.labels.append(SchLabel(text=text, at=at, kind=kind))
 
@@ -108,7 +159,7 @@ def parse_schematic(tree: list) -> Schematic:
                 # (pts (xy x y) (xy x y) ...)
                 for xy in item[1:]:
                     if isinstance(xy, list) and len(xy) >= 3 and xy[0] == "xy":
-                        pts.append((int(float(xy[1])), int(float(xy[2]))))
+                        pts.append((round(float(xy[1])), round(float(xy[2]))))
         if pts:
             sch.wires.append(SchWire(pts=pts))
 
@@ -117,7 +168,7 @@ def parse_schematic(tree: list) -> Schematic:
         at = None
         for item in j[1:]:
             if isinstance(item, list) and item and item[0] == "at" and len(item) >= 3:
-                at = (int(float(item[1])), int(float(item[2])))
+                at = (round(float(item[1])), round(float(item[2])))
         if at:
             sch.junctions.append(SchJunction(at=at))
 
