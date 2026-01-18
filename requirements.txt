@@ -3,4 +3,4 @@ sexpdata==1.0.2
 pydantic==2.12.5
 python-dotenv==1.2.1
 google-generativeai==0.8.6
-wxPython==4.2.0
+streamlit>=1.30.0
