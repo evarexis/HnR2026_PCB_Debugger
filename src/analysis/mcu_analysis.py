@@ -38,15 +38,13 @@ def analyze_reset_circuit(params: Dict[str, Any], sch, net_build) -> AnalysisRes
             severity="critical",
             prevents_bringup=True
         )
-    
-    # Auto-detect reset net
+  
     reset_net = None
     for net in net_build.nets:
         if any(kw in net.name.upper() for kw in ['NRST', 'RST', 'RESET']):
             reset_net = net.name
             break
     
-    # Check for pull-up resistor
     pullup_found = False
     pullup_ref = None
     
@@ -55,16 +53,12 @@ def analyze_reset_circuit(params: Dict[str, Any], sch, net_build) -> AnalysisRes
         net_obj = next((n for n in net_build.nets if n.name == reset_net), None)
         
         if net_obj:
-            # Look for resistors on this net
             for sym in sch.symbols:
                 if sym.ref.startswith('R') and sym.at:
-                    # Check if resistor is near reset net nodes
                     for node in net_obj.nodes:
                         if sym.at:
                             distance = ((sym.at[0] - node[0])**2 + (sym.at[1] - node[1])**2)**0.5
                             if distance < 50:
-                                # Found a resistor on the reset net. 
-                                # Now check if it's also close to a power net (indicating pull-up)
                                 is_pullup = False
                                 for pwr_net in net_build.nets:
                                     if pwr_net.name in ['VDD', 'VCC', '+3V3', '+5V', '3V3', '5V']:
@@ -128,7 +122,6 @@ def check_boot_pins(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
     recommendations = []
     details = {'boot_pins': boot_pins, 'expected_state': expected_state}
     
-    # Find MCU
     mcu = next((s for s in sch.symbols if s.ref == mcu_ref), None)
     if not mcu:
         issues.append(f"MCU {mcu_ref} not found")
@@ -143,19 +136,14 @@ def check_boot_pins(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
             prevents_bringup=True
         )
     
-    # Check each boot pin
     for pin in boot_pins:
-        # Look for nets connected to this pin area
-        # Simplified: check if there's a pull-down resistor or connection
         pulldown_found = False
         tied_to_gnd = False
         
-        # Check for "BOOT" nets
         for net in net_build.nets:
             if 'BOOT' in net.name.upper():
                 details[f'boot_net_pin{pin}'] = net.name
                 
-                # Look for resistors on boot net
                 for sym in sch.symbols:
                     if sym.ref.startswith('R') and sym.at:
                         for node in net.nodes:
@@ -165,7 +153,6 @@ def check_boot_pins(params: Dict[str, Any], sch, net_build) -> AnalysisResult:
                                 details[f'boot_resistor_pin{pin}'] = sym.ref
                                 break
                 
-                # Check if tied to GND
                 if any('GND' in net.name.upper() for net in net_build.nets):
                     tied_to_gnd = True
         

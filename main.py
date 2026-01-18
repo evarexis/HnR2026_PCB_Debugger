@@ -68,16 +68,12 @@ def run_heuristic_analysis(sch, net_build, detected) -> Dict[str, Any]:
 
     analysis_pipeline: List[Dict[str, Any]] = []
 
-    # Build dynamic analysis pipeline
     analysis_pipeline = []
     
-    # Identify Main IC (Best Guess)
     main_ic = None
     if detected.mcu_symbols:
         main_ic = detected.mcu_symbols[0]
     else:
-        # Fallback: find first 'U' component
-        # Simple heuristic: Any U
         u_comps = sorted([s.ref for s in sch.symbols if s.ref.upper().startswith('U')])
         if u_comps:
              main_ic = u_comps[0]
@@ -103,22 +99,18 @@ def run_heuristic_analysis(sch, net_build, detected) -> Dict[str, Any]:
 
     # 2. Main IC Checks (Generic)
     if main_ic:
-        # Check for floating pins on the main IC
         analysis_pipeline.append({
             "function": "check_floating_pins",
             "params": {
                 "ic_ref": main_ic,
-                "critical_pins": [], # Check all
+                "critical_pins": [],
                 "exclude_pins": ["NC", "NB"]
             },
             "priority": "high",
             "reason": "Floating pins can cause undefined behavior"
         })
         
-        # Keep 555-specific check if it looks like a timer, or just rely on generic floating check
-        # For now, generic check covers pin 4 being floating.
-        
-        # Decoupling Capacitors
+
         analysis_pipeline.append({
             "function": "analyze_decoupling_capacitors",
             "params": {
@@ -131,7 +123,6 @@ def run_heuristic_analysis(sch, net_build, detected) -> Dict[str, Any]:
 
     # 3. MCU Specific Checks
     if detected.mcu_symbols:
-        # Reset Circuit
         if detected.reset_nets:
              analysis_pipeline.append({
                 "function": "analyze_reset_circuit",
@@ -144,7 +135,6 @@ def run_heuristic_analysis(sch, net_build, detected) -> Dict[str, Any]:
                 "reason": "Reset circuit check"
             })
             
-        # Boot Configuration (generic check for "BOOT0" pin presence)
         analysis_pipeline.append({
             "function": "check_boot_pins",
             "params": {
@@ -156,14 +146,13 @@ def run_heuristic_analysis(sch, net_build, detected) -> Dict[str, Any]:
             "reason": "Boot configuration"
         })
         
-        # Crystal Circuit
         if detected.clock_sources:
              analysis_pipeline.append({
                 "function": "verify_crystal_circuit",
                 "params": {
                     "crystal_ref": detected.clock_sources[0],
                     "mcu_ref": main_ic,
-                    "load_caps": ["C1", "C2"], # Heuristic
+                    "load_caps": ["C1", "C2"],
                     "frequency_mhz": 8.0
                 },
                 "priority": "critical",
@@ -171,7 +160,6 @@ def run_heuristic_analysis(sch, net_build, detected) -> Dict[str, Any]:
             })
 
     # 4. Bus/Interface Analysis
-    # I2C: Check if nets exist OR if main_ic has I2C pins
     has_i2c_nets = any('SDA' in n.name.upper() or 'SCL' in n.name.upper() for n in net_build.nets)
     if has_i2c_nets:
         analysis_pipeline.append({
@@ -289,7 +277,6 @@ def generate_final_report(
     """
     all_issues = list(llm_analysis.get('detected_issues', []))
 
-    # Add issues from analysis results
     for result in analysis_results:
         if result.get('issues'):
             for issue in result['issues']:
@@ -353,11 +340,9 @@ def generate_final_report(
         }
     }
 
-    # Optional PCB analysis
     if pcb_analysis_report:
         report["pcb_layout_analysis"] = pcb_analysis_report
 
-        # Optional risk adjustment for pcb critical violations
         drc = pcb_analysis_report.get("drc_violations") or []
         pcb_critical = len([v for v in drc if v.get("severity") == "critical"])
         if pcb_critical:

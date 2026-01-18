@@ -27,8 +27,7 @@ def generate_schematic_summary(sch: Schematic, net_build: NetBuildResult) -> Dic
             "lib_id": sym.lib_id,
             "type": _classify_component(sym.ref, sym.lib_id)
         }
-        
-        # Include position for proximity analysis (decoupling caps, etc)
+      
         if sym.at:
             comp_data["position"] = {"x": sym.at[0], "y": sym.at[1]}
         
@@ -43,7 +42,6 @@ def generate_schematic_summary(sch: Schematic, net_build: NetBuildResult) -> Dic
             "is_unnamed": net.name.startswith("NET_UNNAMED_")
         }
         
-        # Add physical extent for debugging trace issues
         if net.nodes:
             xs = [n[0] for n in net.nodes]
             ys = [n[1] for n in net.nodes]
@@ -64,7 +62,6 @@ def generate_schematic_summary(sch: Schematic, net_build: NetBuildResult) -> Dic
             "position": {"x": label.at[0], "y": label.at[1]} if label.at else None
         }
         
-        # If connected, which net?
         if label.at and label.at in net_build.label_attached:
             label_info["net_name"] = net_build.label_attached[label.at]
         

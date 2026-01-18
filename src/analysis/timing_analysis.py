@@ -150,10 +150,15 @@ def verify_crystal_circuit(params: Dict[str, Any], sch, net_build) -> AnalysisRe
             for cap in found_caps:
                 if cap['value']:
                     if cap['value'] > 50e-12:  # > 50pF
-                        recommendations.append(f"{cap['ref']} value seems high for crystal load cap")
+                        issues.append(f"{cap['ref']} value ({cap['value']:.2e}F) is too high for crystal load cap")
+                        recommendations.append(f"Replace {cap['ref']} with 12pF-22pF capacitor")
             
-            status = "pass"
-            severity = "low"
+            if issues:
+                status = "fail"
+                severity = "high"
+            else:
+                status = "pass"
+                severity = "low"
     
     return AnalysisResult(
         function_name="verify_crystal_circuit",
